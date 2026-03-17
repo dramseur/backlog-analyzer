@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Generated outputs
+*_report.md
+*_data.json
+*_dashboard.html
+
+# Test/working files
+*.csv
+*.jsonl
+test_*.json
+test_*.html
+board_*.json
+board_*.html
+board_*.md
+board_*.csv
+tier_categories.json
+
+# Environment
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backlog Analysis Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #232733; --border: #2e3345;
+    --text: #e1e4ed; --text-muted: #8b90a0; --accent: #6366f1; --accent-light: #818cf8;
+    --green: #22c55e; --yellow: #eab308; --orange: #f97316; --red: #ef4444;
+    --blue: #3b82f6; --cyan: #06b6d4; --purple: #a855f7; --pink: #ec4899;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  /* Header */
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .header h1 { font-size: 1.4rem; font-weight: 600; }
+  .header-meta { display: flex; gap: 24px; font-size: 0.85rem; color: var(--text-muted); }
+
+  .container { max-width: 1440px; margin: 0 auto; padding: 24px 32px; }
+
+  /* Navigation */
+  .nav-bar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 32px; display: flex; gap: 0; flex-wrap: wrap; position: sticky; top: 62px; z-index: 99; }
+  .nav-btn { padding: 12px 18px; border: none; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 0.8rem; font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.2s; }
+  .nav-btn:hover { color: var(--text); }
+  .nav-btn.active { color: var(--accent-light); border-bottom-color: var(--accent); }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  /* Score cards */
+  .score-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .score-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; text-align: center; position: relative; overflow: visible; }
+  .score-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .score-card.c1::before { background: var(--accent); }
+  .score-card.c2::before { background: var(--cyan); }
+  .score-card.c3::before { background: var(--green); }
+  .score-card.c4::before { background: var(--red); }
+  .score-value { font-size: 2.8rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .score-label { font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+  .score-sub { font-size: 0.75rem; color: var(--text-muted); padding: 4px 10px; background: var(--surface2); border-radius: 20px; display: inline-block; }
+
+  /* Metric cards */
+  .metrics-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+  .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .metric-value { font-size: 1.6rem; font-weight: 700; margin-bottom: 2px; }
+  .metric-label { font-size: 0.75rem; color: var(--text-muted); }
+  .metric-bar { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+  .metric-bar-fill { height: 100%; border-radius: 2px; transition: width 0.8s ease; }
+
+  /* Cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 12px; }
+  .card p, .card li { font-size: 0.85rem; color: var(--text-muted); line-height: 1.7; }
+  .card ul, .card ol { padding-left: 20px; }
+  .card li { margin-bottom: 6px; }
+  .card strong { color: var(--text); }
+
+  /* Charts */
+  .charts-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .charts-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .chart-container { position: relative; height: 260px; }
+  .chart-container.tall { height: 320px; }
+
+  /* Section header */
+  .sh { display: flex; align-items: center; gap: 12px; margin: 24px 0 16px 0; }
+  .sh h2 { font-size: 1.1rem; font-weight: 600; }
+  .sh .badge { font-size: 0.75rem; padding: 3px 10px; background: var(--accent); color: #fff; border-radius: 12px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th { text-align: left; padding: 10px 12px; border-bottom: 2px solid var(--border); color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.05em; cursor: pointer; user-select: none; white-space: nowrap; }
+  th:hover { color: var(--accent-light); }
+  th.sorted-asc::after { content: ' \u25B2'; color: var(--accent-light); }
+  th.sorted-desc::after { content: ' \u25BC'; color: var(--accent-light); }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--border); max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  tr:hover td { background: var(--surface2); }
+
+  /* Pills */
+  .pill { display: inline-block; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 500; margin: 1px 2px; }
+  .pill-Story { background: #1e3a5f; color: #60a5fa; }
+  .pill-Task { background: #1a3329; color: #4ade80; }
+  .pill-Bug { background: #3b1520; color: #f87171; }
+  .pill-Initiative { background: #362e1a; color: #fbbf24; }
+  .pill-Sub-task { background: #2d1f3d; color: #c084fc; }
+  .pill-active_sprint { background: #1a3329; color: #4ade80; }
+  .pill-planned_sprint { background: #1e3a5f; color: #60a5fa; }
+  .pill-backlog { background: #2a2a2a; color: #999; }
+  .tier-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .tier-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; position: relative; overflow: hidden; }
+  .tier-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .tier-card.tier-active::before { background: var(--green); }
+  .tier-card.tier-planned::before { background: var(--blue); }
+  .tier-card.tier-backlog::before { background: var(--text-muted); }
+  .tier-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .tier-title { font-size: 1rem; font-weight: 700; }
+  .tier-count { font-size: 2rem; font-weight: 700; }
+  .tier-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+  .tier-metric { text-align: center; padding: 8px; background: var(--surface2); border-radius: 8px; }
+  .tier-metric-val { font-size: 1.2rem; font-weight: 700; }
+  .tier-metric-lbl { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; }
+  .risk-item { background: var(--surface2); border-left: 3px solid var(--red); border-radius: 0 8px 8px 0; padding: 10px 14px; margin-bottom: 8px; font-size: 0.82rem; color: var(--text-muted); }
+  .risk-item.warn { border-left-color: var(--orange); }
+  .risk-item.info { border-left-color: var(--blue); }
+  .sprint-goal { background: var(--surface2); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-size: 0.85rem; }
+  .sprint-goal strong { color: var(--accent-light); }
+  @media (max-width: 1200px) { .tier-row { grid-template-columns: 1fr; } }
+  .pill-Critical { background: #3b1520; color: #f87171; }
+  .pill-Major { background: #3b2a15; color: #fb923c; }
+  .pill-Normal { background: #1e3a5f; color: #60a5fa; }
+  .pill-Minor { background: #1a3329; color: #4ade80; }
+  .pill-Undefined { background: #2a2a2a; color: #888; }
+
+  .ai-dot { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; font-size: 0.75rem; font-weight: 700; }
+  .ai-1 { background: #3b1520; color: #f87171; }
+  .ai-2 { background: #3b2a15; color: #fb923c; }
+  .ai-3 { background: #362e1a; color: #fbbf24; }
+  .ai-4 { background: #1e3a5f; color: #60a5fa; }
+  .ai-5 { background: #1a3329; color: #4ade80; }
+
+  .concern-tag { display: inline-block; font-size: 0.65rem; padding: 1px 6px; border-radius: 4px; background: #2a1a1a; color: #f87171; margin: 1px; }
+
+  /* Action cards */
+  .action-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .action-item { background: var(--surface2); border-radius: 8px; padding: 14px 18px; }
+  .action-item .action-title { font-size: 0.85rem; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+  .action-item .action-detail { font-size: 0.78rem; color: var(--text-muted); }
+
+  /* Effort badges */
+  .effort { font-size: 0.65rem; padding: 2px 8px; border-radius: 8px; font-weight: 600; }
+  .effort-Low { background: #1a3329; color: #4ade80; }
+  .effort-Medium { background: #362e1a; color: #fbbf24; }
+  .effort-High { background: #3b1520; color: #f87171; }
+
+  /* Template code block */
+  .code-block { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.8rem; white-space: pre-wrap; color: var(--text-muted); line-height: 1.8; margin: 12px 0; }
+
+  /* Agenda items */
+  .agenda-item { display: flex; align-items: flex-start; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .agenda-item:last-child { border-bottom: none; }
+  .agenda-time { background: var(--accent); color: #fff; font-size: 0.7rem; font-weight: 600; padding: 3px 10px; border-radius: 12px; white-space: nowrap; min-width: 60px; text-align: center; }
+  .agenda-body .agenda-step { font-size: 0.85rem; font-weight: 600; color: var(--text); }
+  .agenda-body .agenda-desc { font-size: 0.78rem; color: var(--text-muted); }
+
+  /* Dup cards */
+  .dup-card { background: var(--surface2); border-radius: 8px; padding: 14px 18px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .dup-items { flex: 1; }
+  .dup-key { font-weight: 600; color: var(--accent-light); font-size: 0.82rem; }
+  .dup-summary { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; }
+  .dup-sim { font-size: 0.8rem; font-weight: 600; color: var(--orange); white-space: nowrap; }
+
+  /* Filters */
+  .filter-bar { display: flex; gap: 12px; margin-bottom: 16px; align-items: center; flex-wrap: wrap; }
+  .filter-bar input, .filter-bar select { background: var(--surface2); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 8px; font-size: 0.82rem; outline: none; }
+  .filter-bar input:focus, .filter-bar select:focus { border-color: var(--accent); }
+  .filter-bar input { width: 260px; }
+  .filter-count { font-size: 0.8rem; color: var(--text-muted); margin-left: auto; }
+
+  /* Coaching insight cards */
+  .insight-card { background: var(--surface2); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; padding: 16px 20px; margin-bottom: 12px; }
+  .insight-card h4 { font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; color: var(--accent-light); }
+  .insight-card p, .insight-card li { font-size: 0.82rem; color: var(--text-muted); }
+
+  /* Info bubbles */
+  .metric-card { position: relative; }
+  .info-icon { position: absolute; top: 8px; right: 8px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted); font-size: 0.7rem; font-weight: 700; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; z-index: 10; }
+  .info-icon:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .info-bubble { display: none; position: absolute; top: 32px; right: 0; width: 280px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; z-index: 20; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+  .info-bubble.visible { display: block; }
+  .info-bubble h5 { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent-light); margin-bottom: 6px; }
+  .info-bubble p { font-size: 0.78rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 10px; }
+  .info-bubble p:last-child { margin-bottom: 0; }
+
+  @media (max-width: 1200px) {
+    .score-row { grid-template-columns: repeat(2, 1fr); }
+    .metrics-grid { grid-template-columns: repeat(3, 1fr); }
+    .charts-row, .charts-row-3 { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 768px) {
+    .container { padding: 16px; }
+    .score-row, .metrics-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Backlog Analysis Dashboard</h1>
+  <div class="header-meta">
+    <span id="meta-date"></span>
+    <span id="meta-items"></span>
+    <span id="meta-team"></span>
+  </div>
+</div>
+
+<div class="nav-bar">
+  <button class="nav-btn active" data-section="sec-summary">1. Executive Summary</button>
+  <button class="nav-btn" data-section="sec-sprint">2. Backlog at a Glance</button>
+  <button class="nav-btn" data-section="sec-concerns">3. Key Concerns</button>
+  <button class="nav-btn" data-section="sec-actions">4. Recommended Actions</button>
+  <button class="nav-btn" data-section="sec-sizing">5. Story Size</button>
+  <button class="nav-btn" data-section="sec-deps">6. Dependencies</button>
+  <button class="nav-btn" data-section="sec-org">7. Organization</button>
+  <button class="nav-btn" data-section="sec-readiness">8. Readiness Score</button>
+  <button class="nav-btn" data-section="sec-ai">9. AI Refinement Readiness</button>
+  <button class="nav-btn" data-section="sec-codegen">10. AI Code Gen Readiness</button>
+  <button class="nav-btn" data-section="sec-coaching">11. Coaching Insights</button>
+  <button class="nav-btn" data-section="sec-items">12. All Items</button>
+</div>
+
+<div class="container">
+  <!-- EXECUTIVE SUMMARY -->
+  <div class="section active" id="sec-summary">
+    <div class="score-row" id="score-row"></div>
+    <div class="sh"><h2>Quality Metrics</h2></div>
+    <div class="metrics-grid" id="metrics-grid"></div>
+    <div class="charts-row">
+      <div class="card"><h3>Issue Type Distribution</h3><div class="chart-container"><canvas id="chart-types"></canvas></div></div>
+      <div class="card"><h3>Readiness Factors</h3><div class="chart-container"><canvas id="chart-readiness"></canvas></div></div>
+    </div>
+    <div class="card" id="summary-concerns"></div>
+  </div>
+
+  <!-- BACKLOG AT A GLANCE -->
+  <div class="section" id="sec-sprint">
+    <div id="sprint-goal-bar"></div>
+    <div class="tier-row" id="tier-cards"></div>
+    <div id="tier-detail-active_sprint"></div>
+    <div id="tier-detail-planned_sprint"></div>
+    <div id="tier-detail-backlog"></div>
+  </div>
+
+  <!-- 2. KEY CONCERNS - DETAILS -->
+  <div class="section" id="sec-concerns">
+    <div class="sh"><h2>Key Backlog Item Concerns - Details</h2></div>
+    <div class="card"><h3>Concern Distribution</h3><div class="chart-container tall"><canvas id="chart-concerns"></canvas></div></div>
+    <div id="concerns-tables"></div>
+  </div>
+
+  <!-- 3. RECOMMENDED ACTIONS -->
+  <div class="section" id="sec-actions">
+    <div class="sh"><h2>Recommended Actions</h2></div>
+    <div id="actions-content"></div>
+  </div>
+
+  <!-- 4. STORY SIZE & DECOMPOSITION -->
+  <div class="section" id="sec-sizing">
+    <div class="sh"><h2>Story Size & Decomposition Signals</h2></div>
+    <div class="charts-row">
+      <div class="card"><h3>Story Point Distribution</h3><div class="chart-container"><canvas id="chart-sp"></canvas></div></div>
+      <div class="card" id="decomp-details"></div>
+    </div>
+  </div>
+
+  <!-- 5. DEPENDENCIES -->
+  <div class="section" id="sec-deps">
+    <div class="sh"><h2>Dependency Signals</h2></div>
+    <div id="deps-content"></div>
+  </div>
+
+  <!-- 6. ORGANIZATION -->
+  <div class="section" id="sec-org">
+    <div class="sh"><h2>Backlog Organization & Structure</h2></div>
+    <div class="charts-row">
+      <div class="card"><h3>Status Distribution</h3><div class="chart-container"><canvas id="chart-status"></canvas></div></div>
+      <div class="card"><h3>Priority Distribution</h3><div class="chart-container"><canvas id="chart-priority"></canvas></div></div>
+    </div>
+    <div class="card" id="org-observations"></div>
+    <div class="card" id="org-duplicates"></div>
+  </div>
+
+  <!-- 7. READINESS SCORE -->
+  <div class="section" id="sec-readiness">
+    <div class="sh"><h2>Backlog Readiness Assessment</h2></div>
+    <div id="readiness-content"></div>
+  </div>
+
+  <!-- 8. AI-ASSISTED REFINEMENT READINESS -->
+  <div class="section" id="sec-ai">
+    <div class="sh"><h2>AI-Assisted Refinement Readiness</h2></div>
+    <div id="ai-content"></div>
+  </div>
+
+  <!-- 9. AI CODE GENERATION READINESS -->
+  <div class="section" id="sec-codegen">
+    <div class="sh"><h2>AI-Automated Code Generation Readiness</h2></div>
+    <div id="codegen-content"></div>
+  </div>
+
+  <!-- 9. COACHING INSIGHTS -->
+  <div class="section" id="sec-coaching">
+    <div class="sh"><h2>Agile Coaching Insights</h2></div>
+    <div id="coaching-content"></div>
+  </div>
+
+  <!-- ALL ITEMS TABLE -->
+  <div class="section" id="sec-items">
+    <div class="sh"><h2>All Backlog Items</h2><span class="badge" id="items-badge"></span></div>
+    <div class="filter-bar">
+      <input type="text" id="filter-search" placeholder="Search by key or summary...">
+      <select id="filter-type"><option value="">All Types</option></select>
+      <select id="filter-priority"><option value="">All Priorities</option></select>
+      <select id="filter-status"><option value="">All Statuses</option></select>
+      <select id="filter-ai"><option value="">All AI Scores</option></select>
+      <select id="filter-tier"><option value="">All Tiers</option></select>
+      <span class="filter-count" id="filter-count"></span>
+    </div>
+    <div class="card">
+      <table id="table-all">
+        <thead><tr>
+          <th data-col="key">Key</th><th data-col="tier">Tier</th><th data-col="type">Type</th><th data-col="priority">Priority</th>
+          <th data-col="status">Status</th><th data-col="summary">Summary</th><th data-col="story_points">SP</th>
+          <th data-col="ai_readiness">AI Ref</th><th data-col="codegen_readiness">AI Code</th><th data-col="concern_count">Issues</th>
+          <th data-col="days_since_update">Age (d)</th><th data-col="assignee">Assignee</th>
+        </tr></thead>
+        <tbody id="tbody-all"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+let DATA = null;
+let sortState = { col: null, dir: 'asc' };
+
+// %%DATA_PLACEHOLDER%% - this marker is replaced by the analyzer with inline JSON
+const EMBEDDED_DATA = null;
+
+async function loadData() {
+  if (EMBEDDED_DATA) {
+    DATA = EMBEDDED_DATA;
+  } else {
+    const resp = await fetch('backlog_analysis.json');
+    DATA = await resp.json();
+  }
+  render();
+}
+
+function clr(pct) {
+  if (pct >= 80) return 'var(--green)';
+  if (pct >= 60) return 'var(--blue)';
+  if (pct >= 40) return 'var(--yellow)';
+  if (pct >= 20) return 'var(--orange)';
+  return 'var(--red)';
+}
+function sclr(s, mx) { return clr((s / mx) * 100); }
+function esc(s) { const e = document.createElement('span'); e.textContent = s; return e.innerHTML; }
+function tp(t) { return `<span class="pill pill-${t}">${t}</span>`; }
+function pp(p) { return `<span class="pill pill-${p}">${p}</span>`; }
+function ap(s) { return `<span class="ai-dot ai-${s}">${s}</span>`; }
+
+function tierPill(t) {
+  const labels = {active_sprint:'Active Sprint', planned_sprint:'Planned', backlog:'Backlog'};
+  return `<span class="pill pill-${t}">${labels[t]||t}</span>`;
+}
+
+function render() {
+  const d = DATA, es = d.executive_summary, qm = es.quality_metrics;
+  document.getElementById('meta-date').textContent = d.meta.analysis_date;
+  document.getElementById('meta-items').textContent = d.meta.total_items + ' items';
+  document.getElementById('meta-team').textContent = d.meta.team;
+
+  if (d.tier_analysis) renderSprintView(d);
+  renderSummary(d);
+  renderConcerns(d);
+  renderSizing(d);
+  renderDeps(d);
+  renderOrg(d);
+  renderReadiness(d);
+  renderAI(d);
+  renderCodeGen(d);
+  renderActions(d);
+  renderCoaching(d);
+  setupItemsTable(d);
+  setupNav();
+}
+
+/* ─── Sprint View ─── */
+function renderSprintView(d) {
+  const ta = d.tier_analysis, tc = d.tier_coaching, si = d.sprint_info || {};
+  if (!ta) return;
+
+  // Sprint goal bar
+  const active = si.active_sprint || {};
+  if (active.goal) {
+    document.getElementById('sprint-goal-bar').innerHTML = `<div class="sprint-goal"><strong>Sprint Goal (${esc(active.name)}):</strong> ${esc(active.goal)}${active.end ? ` <span style="color:var(--text-muted);font-size:0.8rem">(${active.start} to ${active.end})</span>` : ''}</div>`;
+  }
+
+  // Tier summary cards
+  const tierDefs = [
+    {id:'active_sprint', cls:'tier-active', icon:'var(--green)', title:'Active Sprint'},
+    {id:'planned_sprint', cls:'tier-planned', icon:'var(--blue)', title:'Planned Sprint'},
+    {id:'backlog', cls:'tier-backlog', icon:'var(--text-muted)', title:'Backlog'},
+  ];
+
+  document.getElementById('tier-cards').innerHTML = tierDefs.map(td => {
+    const t = ta[td.id];
+    if (!t) return '';
+    const m = t.metrics;
+    return `<div class="tier-card ${td.cls}">
+      <div class="tier-header"><div class="tier-title" style="color:${td.icon}">${td.title}</div><div class="tier-count" style="color:${td.icon}">${t.count}</div></div>
+      <div class="tier-metrics">
+        <div class="tier-metric"><div class="tier-metric-val" style="color:${clr(m.ac_coverage)}">${m.ac_coverage}%</div><div class="tier-metric-lbl">AC Coverage</div></div>
+        <div class="tier-metric"><div class="tier-metric-val" style="color:${clr(m.sp_coverage)}">${m.sp_coverage}%</div><div class="tier-metric-lbl">Estimated</div></div>
+        <div class="tier-metric"><div class="tier-metric-val" style="color:${clr(m.epic_coverage)}">${m.epic_coverage}%</div><div class="tier-metric-lbl">Epic Link</div></div>
+      </div>
+      <div class="tier-metrics">
+        <div class="tier-metric"><div class="tier-metric-val" style="color:${sclr(m.avg_ai_readiness,5)}">${m.avg_ai_readiness}</div><div class="tier-metric-lbl">AI Readiness</div></div>
+        <div class="tier-metric"><div class="tier-metric-val" style="color:${m.stale_pct>10?'var(--red)':'var(--green)'}">${m.stale_pct}%</div><div class="tier-metric-lbl">Stale</div></div>
+        <div class="tier-metric"><div class="tier-metric-val" style="color:${m.unassigned_pct>30?'var(--orange)':'var(--green)'}">${m.unassigned_pct}%</div><div class="tier-metric-lbl">Unassigned</div></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Per-tier detail sections
+  tierDefs.forEach(td => {
+    const t = ta[td.id], c = tc[td.id];
+    if (!t || !c) return;
+    const el = document.getElementById('tier-detail-' + td.id);
+    if (!el) return;
+
+    let html = `<div class="sh"><h2 style="color:${td.icon}">${td.title}</h2><span class="badge">${t.count} items</span></div>`;
+    html += `<div class="card"><p style="margin-bottom:12px">${esc(c.context)}</p>`;
+
+    // Risks
+    if (c.risks.length) {
+      html += `<h3 style="margin:16px 0 8px">Risks & Warnings</h3>`;
+      c.risks.forEach(r => {
+        const cls = td.id === 'active_sprint' ? 'risk-item' : td.id === 'planned_sprint' ? 'risk-item warn' : 'risk-item info';
+        html += `<div class="${cls}">${esc(r)}</div>`;
+      });
+    }
+
+    // Actions
+    if (c.actions.length) {
+      html += `<h3 style="margin:16px 0 8px">Recommended Actions</h3><ul>`;
+      c.actions.forEach(a => html += `<li style="margin-bottom:6px">${esc(a)}</li>`);
+      html += `</ul>`;
+    }
+    html += `</div>`;
+
+    // Items table for this tier
+    const tierItems = d.all_items.filter(i => i.tier === td.id);
+    if (tierItems.length) {
+      html += `<div class="card"><h3>Items in ${td.title}</h3><table><thead><tr><th>Key</th><th>Type</th><th>Priority</th><th>Status</th><th>Summary</th><th>SP</th><th>AI</th><th>Issues</th><th>Assignee</th></tr></thead><tbody>`;
+      tierItems.forEach(i => {
+        html += `<tr><td>${i.key}</td><td>${tp(i.type)}</td><td>${pp(i.priority)}</td><td>${i.status}</td><td title="${esc(i.summary)}">${esc(i.summary.substring(0,70))}</td><td>${i.story_points!==null?i.story_points:'-'}</td><td>${ap(i.ai_readiness)}</td><td>${i.concern_count>0?`<span style="color:${i.concern_count>=4?'var(--red)':i.concern_count>=2?'var(--orange)':'var(--text-muted)'}">${i.concern_count}</span>`:'0'}</td><td>${i.assignee==='Unassigned'?'<span style="color:var(--text-muted)">-</span>':esc(i.assignee)}</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+    }
+
+    // Critical items in this tier
+    if (t.critical_items.length) {
+      html += `<div class="card"><h3>Critical Items (4+ concerns)</h3><table><thead><tr><th>Key</th><th>Type</th><th>Concerns</th><th>Summary</th></tr></thead><tbody>`;
+      t.critical_items.forEach(i => {
+        html += `<tr><td>${i.key}</td><td>${tp(i.type)}</td><td>${i.concerns.map(c=>`<span class="concern-tag">${c.replace(/_/g,' ')}</span>`).join(' ')}</td><td>${esc(i.summary)}</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+    }
+
+    el.innerHTML = html;
+  });
+}
+
+/* ─── 1. Executive Summary ─── */
+function renderSummary(d) {
+  const es = d.executive_summary, qm = es.quality_metrics;
+  const freshPct = 100 - qm.stale_items.pct;
+  const healthScore = Math.round((qm.description_coverage.pct + qm.acceptance_criteria.pct + qm.epic_linkage.pct + freshPct) / 4);
+
+  const sci = es.score_card_info || {};
+  const scBubble = (key, id) => {
+    const info = sci[key];
+    if (!info) return '';
+    return `<span class="info-icon" data-info="sc-${id}">i</span><div class="info-bubble" id="info-bubble-sc-${id}"><h5>What it measures</h5><p>${esc(info.what)}</p><h5>Why this matters</h5><p>${esc(info.why_helpful)}</p></div>`;
+  };
+  document.getElementById('score-row').innerHTML = `
+    <div class="score-card c1">${scBubble('backlog_readiness',0)}<div class="score-label">Backlog Readiness</div><div class="score-value" style="color:${sclr(es.readiness_score,5)}">${es.readiness_score}</div><div class="score-sub">out of 5.0 -- ${es.readiness_label}</div></div>
+    <div class="score-card c2">${scBubble('ai_readiness',1)}<div class="score-label">AI-Readiness</div><div class="score-value" style="color:${sclr(es.ai_readiness_avg,5)}">${es.ai_readiness_avg}</div><div class="score-sub">out of 5.0</div></div>
+    <div class="score-card c3">${scBubble('quality_index',2)}<div class="score-label">Quality Index</div><div class="score-value" style="color:${clr(healthScore)}">${healthScore}%</div><div class="score-sub">avg of key metrics</div></div>
+    <div class="score-card c4">${scBubble('critical_items',3)}<div class="score-label">Critical Items</div><div class="score-value" style="color:${d.critical_items.length > 50 ? 'var(--red)' : d.critical_items.length > 20 ? 'var(--orange)' : 'var(--green)'}">${d.critical_items.length}</div><div class="score-sub">4+ concerns each</div></div>`;
+
+  const rf = d.readiness_factors;
+  document.getElementById('metrics-grid').innerHTML = rf.map((f, idx) => {
+    const hasInfo = f.what || f.why_helpful;
+    const bubble = hasInfo ? `<span class="info-icon" data-info="${idx}">i</span><div class="info-bubble" id="info-bubble-${idx}"><h5>What it measures</h5><p>${esc(f.what||'')}</p><h5>Why this matters</h5><p>${esc(f.why_helpful||'')}</p></div>` : '';
+    return `<div class="metric-card">${bubble}<div class="metric-value" style="color:${sclr(f.score,5)}">${f.score}</div><div class="metric-label">${f.name}</div><div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px">${f.detail}</div><div class="metric-bar"><div class="metric-bar-fill" style="width:${f.pct}%;background:${sclr(f.score,5)}"></div></div></div>`;
+  }).join('');
+
+  // Wire up info bubble toggles
+  document.querySelectorAll('.info-icon').forEach(icon => {
+    icon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = 'info-bubble-' + icon.dataset.info;
+      const bubble = document.getElementById(id);
+      const wasVisible = bubble.classList.contains('visible');
+      document.querySelectorAll('.info-bubble').forEach(b => b.classList.remove('visible'));
+      if (!wasVisible) bubble.classList.add('visible');
+    });
+  });
+  document.addEventListener('click', () => document.querySelectorAll('.info-bubble').forEach(b => b.classList.remove('visible')));
+
+  document.getElementById('summary-concerns').innerHTML = `<h3>Top Concerns</h3><ul>${es.top_concerns.map(c => `<li><strong>${c.label}:</strong> ${c.count} items (${c.pct}%)</li>`).join('')}</ul>`;
+
+  // Charts
+  Chart.defaults.color = '#8b90a0'; Chart.defaults.borderColor = '#2e3345';
+  const cc = ['#6366f1','#3b82f6','#06b6d4','#22c55e','#eab308','#f97316','#ef4444','#ec4899','#a855f7'];
+  new Chart(document.getElementById('chart-types'), { type:'doughnut', data:{ labels:Object.keys(es.type_counts), datasets:[{data:Object.values(es.type_counts), backgroundColor:cc, borderWidth:0}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'right',labels:{padding:16,usePointStyle:true,pointStyle:'circle'}}}, cutout:'60%'} });
+  new Chart(document.getElementById('chart-readiness'), { type:'radar', data:{ labels:rf.map(f=>f.name), datasets:[{label:'Score (1-5)', data:rf.map(f=>f.score), backgroundColor:'rgba(99,102,241,0.2)', borderColor:'#6366f1', borderWidth:2, pointBackgroundColor:'#6366f1', pointRadius:5}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{r:{beginAtZero:false,min:1,max:5,grid:{color:'#2e3345'},angleLines:{color:'#2e3345'},pointLabels:{font:{size:11},color:'#e1e4ed'},ticks:{stepSize:1,display:true,color:'#555',backdropColor:'transparent'}}}} });
+}
+
+/* ─── 2. Key Concerns ─── */
+function renderConcerns(d) {
+  const cMap = {}; d.all_items.forEach(i => i.concerns.forEach(c => { cMap[c] = (cMap[c]||0)+1; }));
+  const cLabels = { no_epic_link:"No Epic Link", missing_acceptance_criteria:"Missing AC", stale:"Stale (6+ months)", unassigned:"Unassigned", undefined_priority:"Undefined Priority", no_story_points:"No Story Points", missing_description:"Missing Description", too_large:"Too Large (8+ SP)" };
+  const sorted = Object.entries(cMap).sort((a,b)=>b[1]-a[1]);
+  new Chart(document.getElementById('chart-concerns'), { type:'bar', data:{ labels:sorted.map(([c])=>cLabels[c]||c), datasets:[{data:sorted.map(([,v])=>v), backgroundColor:['#ef4444','#f97316','#eab308','#a855f7','#6366f1','#3b82f6','#06b6d4','#22c55e'], borderRadius:6, borderSkipped:false}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true,grid:{color:'#2e3345'}},y:{grid:{display:false}}}} });
+
+  let html = '';
+  if (d.large_items.length) {
+    html += `<div class="card"><h3>Too Large / Needs Splitting (${d.large_items.length} items at 8+ SP)</h3><table><thead><tr><th>Key</th><th>Type</th><th>SP</th><th>Summary</th></tr></thead><tbody>${d.large_items.map(i=>`<tr><td>${i.key}</td><td>${tp(i.type)}</td><td>${i.story_points}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  if (d.no_description_items.length) {
+    html += `<div class="card"><h3>Poorly Defined / Lacking Detail (${d.no_description_items.length} items)</h3><table><thead><tr><th>Key</th><th>Type</th><th>Summary</th></tr></thead><tbody>${d.no_description_items.map(i=>`<tr><td>${i.key}</td><td>${tp(i.type)}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  if (d.undefined_priority_bugs.length) {
+    html += `<div class="card"><h3>Bugs with Undefined Priority (${d.undefined_priority_bugs.length} bugs need triage)</h3><table><thead><tr><th>Key</th><th>Summary</th></tr></thead><tbody>${d.undefined_priority_bugs.map(i=>`<tr><td>${i.key}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  if (d.stale_items.length) {
+    html += `<div class="card"><h3>Stale Items -- Not Updated in 6+ Months (${d.stale_items.length} items, ${Math.round(d.stale_items.length*100/d.meta.total_items)}% of backlog)</h3><table><thead><tr><th>Key</th><th>Type</th><th>Days</th><th>Summary</th></tr></thead><tbody>${d.stale_items.slice(0,20).map(i=>`<tr><td>${i.key}</td><td>${tp(i.type)}</td><td>${i.days_since_update}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table>${d.stale_items.length>20?`<p style="margin-top:8px;font-size:0.8rem;color:var(--text-muted)">...and ${d.stale_items.length-20} more stale items</p>`:''}</div>`;
+  }
+  html += `<div class="card"><h3>Items Not Linked to Epics or Goals</h3><p>${d.no_epic_items_count} items (${Math.round(d.no_epic_items_count*100/d.meta.total_items)}%) are not linked to any epic or parent, making it difficult to trace work to strategic objectives.</p></div>`;
+  if (d.critical_items.length) {
+    html += `<div class="card"><h3>Critical Items Requiring Immediate Refinement (${d.critical_items.length} items with 4+ concerns)</h3><table><thead><tr><th>Key</th><th>Type</th><th>Concerns</th><th>Summary</th></tr></thead><tbody>${d.critical_items.map(i=>`<tr><td>${i.key}</td><td>${tp(i.type)}</td><td>${i.concerns.map(c=>`<span class="concern-tag">${c.replace(/_/g,' ')}</span>`).join(' ')}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  document.getElementById('concerns-tables').innerHTML = html;
+}
+
+/* ─── 3. Story Size ─── */
+function renderSizing(d) {
+  const sp = d.story_point_distribution;
+  new Chart(document.getElementById('chart-sp'), { type:'bar', data:{ labels:sp.map(s=>s.points+' SP'), datasets:[{label:'Count', data:sp.map(s=>s.count), backgroundColor:'#6366f1', borderRadius:6, borderSkipped:false}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true,grid:{color:'#2e3345'}},x:{grid:{display:false}}}} });
+
+  let html = `<h3>Decomposition Signals</h3>`;
+  html += `<p style="margin-bottom:12px"><strong>${d.not_estimated_count} items</strong> (${Math.round(d.not_estimated_count*100/d.meta.total_items)}%) are not yet estimated.</p>`;
+  if (d.large_items.length) {
+    html += `<p style="margin-bottom:8px"><strong>${d.large_items.length} items at 8+ SP</strong> likely need splitting:</p><ul>${d.large_items.map(i=>`<li><strong>${i.key}</strong> (${i.story_points} SP) -- ${esc(i.summary.substring(0,70))}</li>`).join('')}</ul>`;
+  }
+  if (d.decomposition.initiatives.length) {
+    html += `<p style="margin:12px 0 8px"><strong>Initiatives Needing Further Breakdown:</strong></p><ul>${d.decomposition.initiatives.map(i=>`<li><strong>${i.key}</strong> -- ${esc(i.summary)}</li>`).join('')}</ul>`;
+  }
+  if (d.decomposition.medium_large_count) {
+    html += `<p style="margin-top:12px"><strong>${d.decomposition.medium_large_count} items at 5 SP</strong> -- review these during refinement for potential splitting.</p>`;
+  }
+  document.getElementById('decomp-details').innerHTML = html;
+}
+
+/* ─── 4. Dependencies ─── */
+function renderDeps(d) {
+  let html = `<div class="card"><p><strong>${d.items_with_deps_count} items</strong> (${Math.round(d.items_with_deps_count*100/d.meta.total_items)}%) have issue links (blocks, depends on, relates to).</p></div>`;
+  if (d.dependency_items.length) {
+    html += `<div class="card"><h3>Items with Most Links (potential dependency bottlenecks)</h3><table><thead><tr><th>Key</th><th>Outward</th><th>Inward</th><th>Summary</th></tr></thead><tbody>${d.dependency_items.map(i=>`<tr><td>${i.key}</td><td>${i.outward}</td><td>${i.inward}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  html += `<div class="card"><h3>Recommendations</h3><ul><li>Map dependency chains before sprint planning to avoid blocked work</li><li>Prioritize items that unblock the most downstream work</li><li>Flag cross-team dependencies early in refinement</li></ul></div>`;
+  document.getElementById('deps-content').innerHTML = html;
+}
+
+/* ─── 5. Organization ─── */
+function renderOrg(d) {
+  const stData = d.status_distribution, prData = d.priority_distribution;
+  const stColors = {'New':'#6366f1','In Progress':'#3b82f6','Review':'#eab308','Testing':'#22c55e','Backlog':'#8b90a0'};
+  const prColors = {'Critical':'#ef4444','Major':'#f97316','Normal':'#3b82f6','Minor':'#22c55e','Undefined':'#555'};
+  new Chart(document.getElementById('chart-status'), { type:'bar', data:{ labels:stData.map(s=>s.status), datasets:[{data:stData.map(s=>s.count), backgroundColor:stData.map(s=>stColors[s.status]||'#6366f1'), borderRadius:6, borderSkipped:false}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true,grid:{color:'#2e3345'}},y:{grid:{display:false}}}} });
+  new Chart(document.getElementById('chart-priority'), { type:'bar', data:{ labels:prData.map(p=>p.priority), datasets:[{data:prData.map(p=>p.count), backgroundColor:prData.map(p=>prColors[p.priority]||'#6366f1'), borderRadius:6, borderSkipped:false}]}, options:{indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{beginAtZero:true,grid:{color:'#2e3345'}},y:{grid:{display:false}}}} });
+
+  document.getElementById('org-observations').innerHTML = `<h3>Observations</h3><ul>${d.organization.observations.map(o=>`<li>${o}</li>`).join('')}</ul>`;
+
+  let dupHtml = '<h3>Potential Duplicates / Overlapping Items</h3>';
+  if (d.duplicates.length) {
+    dupHtml += '<p style="margin-bottom:12px;font-size:0.82rem;color:var(--text-muted)">Items with similar summaries that may overlap (manual review recommended):</p>';
+    dupHtml += d.duplicates.map(dp => `<div class="dup-card"><div class="dup-items"><div><span class="dup-key">${dp.key_a}</span> <span class="dup-summary">${esc(dp.summary_a.substring(0,70))}</span></div><div><span class="dup-key">${dp.key_b}</span> <span class="dup-summary">${esc(dp.summary_b.substring(0,70))}</span></div></div><div class="dup-sim">${Math.round(dp.similarity*100)}% match</div></div>`).join('');
+  } else {
+    dupHtml += '<p>No obvious duplicates detected by title similarity.</p>';
+  }
+  document.getElementById('org-duplicates').innerHTML = dupHtml;
+}
+
+/* ─── 6. Readiness Score ─── */
+function renderReadiness(d) {
+  const es = d.executive_summary, rf = d.readiness_factors;
+  let html = `<div class="score-row" style="grid-template-columns:1fr"><div class="score-card c1"><div class="score-label">Overall Backlog Readiness Score</div><div class="score-value" style="color:${sclr(es.readiness_score,5)};font-size:4rem">${es.readiness_score}</div><div class="score-sub" style="font-size:0.85rem">out of 5.0 -- ${es.readiness_label}</div></div></div>`;
+  html += `<div class="card"><h3>Readiness Factor Breakdown</h3><table><thead><tr><th>Factor</th><th>Score</th><th>Details</th></tr></thead><tbody>${rf.map(f=>`<tr><td>${f.name}</td><td><span style="color:${sclr(f.score,5)};font-weight:700">${f.score} / 5</span></td><td>${f.detail}</td></tr>`).join('')}</tbody></table><p style="margin-top:16px;font-size:0.82rem;color:var(--text-muted)"><strong>Scale:</strong> 1 = Poorly defined / not ready | 3 = Moderately ready | 5 = Well structured / ready for sprint planning</p></div>`;
+  document.getElementById('readiness-content').innerHTML = html;
+}
+
+/* ─── 7. AI-Assisted Refinement Readiness ─── */
+function renderAI(d) {
+  const ai = d.ai_readiness;
+  let html = `<div class="card" style="margin-bottom:16px"><h3>How This Score Is Calculated</h3><p style="font-size:0.82rem;color:var(--text-muted);line-height:1.7">Each item is scored 1-5 based on whether it has enough structured detail for AI tools to assist with <strong>refinement tasks</strong> (story splitting, subtask generation, acceptance criteria drafting):</p><table style="margin-top:12px"><thead><tr><th>Points</th><th>Criteria</th></tr></thead><tbody><tr><td><strong>1</strong> (base)</td><td>Every item starts at 1</td></tr><tr><td><strong>+1</strong></td><td>Description longer than 200 characters</td></tr><tr><td><strong>+1</strong></td><td>Description longer than 500 characters (stacks with above)</td></tr><tr><td><strong>+1</strong></td><td>Has acceptance criteria (Given/When/Then, expected result, definition of done)</td></tr><tr><td><strong>+1</strong></td><td>Linked to an epic or has a parent item</td></tr></tbody></table></div>`;
+  html += `<div class="charts-row"><div class="card"><h3>Refinement Readiness Distribution</h3><div class="chart-container"><canvas id="chart-ai2"></canvas></div></div>`;
+  html += `<div class="card"><h3>Refinement Readiness Summary</h3><p style="margin-bottom:12px"><strong>Average Score:</strong> <span style="color:${sclr(d.executive_summary.ai_readiness_avg,5)};font-size:1.4rem;font-weight:700">${d.executive_summary.ai_readiness_avg}</span> / 5.0</p>`;
+  html += `<table><thead><tr><th>Score</th><th>Count</th><th>%</th><th>Interpretation</th></tr></thead><tbody>${ai.distribution.map(a=>`<tr><td>${ap(a.score)}</td><td>${a.count}</td><td>${a.pct}%</td><td>${a.label}</td></tr>`).join('')}</tbody></table></div></div>`;
+
+  if (ai.low_score_count) {
+    html += `<div class="card"><h3>${ai.low_score_count} Items Scored 1-2 (AI Cannot Meaningfully Act)</h3><p style="margin-bottom:8px">Common missing elements preventing AI-readiness:</p><ul>${ai.missing_elements.map(e=>`<li><strong>${e.element}:</strong> ${e.count} items</li>`).join('')}</ul></div>`;
+  }
+  if (ai.top_ready.length) {
+    html += `<div class="card"><h3>${ai.top_ready.length} Items Scored 4-5 (AI-Ready)</h3><p style="margin-bottom:8px">Good candidates for AI-assisted refinement (story splitting, subtask generation, AC drafting):</p><table><thead><tr><th>Key</th><th>AI Score</th><th>Type</th><th>Summary</th></tr></thead><tbody>${ai.top_ready.map(i=>`<tr><td>${i.key}</td><td>${ap(i.score)}</td><td>${tp(i.type)}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+  html += `<div class="card"><h3>Recommendations to Improve AI-Readiness</h3><ul>${ai.recommendations.map(r=>`<li>${r}</li>`).join('')}</ul></div>`;
+  document.getElementById('ai-content').innerHTML = html;
+
+  // Render AI chart after DOM insertion
+  const aiColors = ['#ef4444','#f97316','#eab308','#3b82f6','#22c55e'];
+  new Chart(document.getElementById('chart-ai2'), { type:'bar', data:{ labels:ai.distribution.map(a=>'Score '+a.score), datasets:[{data:ai.distribution.map(a=>a.count), backgroundColor:aiColors, borderRadius:6, borderSkipped:false}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{afterLabel:(ctx)=>ai.distribution[ctx.dataIndex].label}}}, scales:{y:{beginAtZero:true,grid:{color:'#2e3345'}},x:{grid:{display:false}}}} });
+}
+
+/* ─── 8. Recommended Actions ─── */
+function renderActions(d) {
+  const ra = d.recommended_actions;
+  let html = `<div class="card"><h3>Immediate Actions (This Sprint)</h3><div class="action-grid">${ra.immediate.map(a=>`<div class="action-item"><div class="action-title">${a.action}</div><div class="action-detail">${a.detail}</div></div>`).join('')}</div></div>`;
+  html += `<div class="card"><h3>Short-Term Actions (Next 2-3 Sprints)</h3><div class="action-grid">${ra.short_term.map(a=>`<div class="action-item"><div class="action-title">${a.action}</div><div class="action-detail">${a.detail}</div></div>`).join('')}</div></div>`;
+  html += `<div class="card"><h3>Automatable Actions</h3><p style="margin-bottom:12px">The following can be automated with Jira automation rules or AI scripts:</p><table><thead><tr><th>Action</th><th>Automation Approach</th><th>Effort</th></tr></thead><tbody>${ra.automatable.map(a=>`<tr><td><strong>${a.action}</strong></td><td>${a.approach}</td><td><span class="effort effort-${a.effort}">${a.effort}</span></td></tr>`).join('')}</tbody></table></div>`;
+  document.getElementById('actions-content').innerHTML = html;
+}
+
+/* ─── 9. AI Code Generation Readiness ─── */
+function renderCodeGen(d) {
+  const cg = d.code_gen_readiness;
+  if (!cg) { document.getElementById('codegen-content').innerHTML = '<div class="card"><p>No code generation readiness data available.</p></div>'; return; }
+  const cc = cg.criteria_coverage, total = d.meta.total_items;
+
+  let html = `<div class="card" style="margin-bottom:16px"><h3>How This Score Is Calculated</h3><p style="font-size:0.82rem;color:var(--text-muted);line-height:1.7">Each item is scored 1-5 based on whether it has enough structured detail for an AI agent to <strong>autonomously write code</strong> to implement the issue:</p><table style="margin-top:12px"><thead><tr><th>Points</th><th>Criteria</th></tr></thead><tbody><tr><td><strong>1</strong> (base)</td><td>Every item starts at 1</td></tr><tr><td><strong>+1</strong></td><td>Description contains technical context (file paths, API endpoints, function/class names, code references)</td></tr><tr><td><strong>+1</strong></td><td>Has testable acceptance criteria (multiple Given/When/Then, expected results, should return/fail patterns)</td></tr><tr><td><strong>+1</strong></td><td>Bounded scope (not an Epic/Initiative, ≤5 SP) AND has component/label mapping</td></tr><tr><td><strong>+1</strong></td><td>No blocking dependencies AND has a story point estimate</td></tr></tbody></table></div>`;
+
+  html += `<div class="charts-row"><div class="card"><h3>Code Gen Readiness Distribution</h3><div class="chart-container"><canvas id="chart-codegen"></canvas></div></div>`;
+  html += `<div class="card"><h3>Code Gen Readiness Summary</h3><p style="margin-bottom:12px"><strong>Average Score:</strong> <span style="color:${sclr(cg.avg_score,5)};font-size:1.4rem;font-weight:700">${cg.avg_score}</span> / 5.0</p>`;
+  html += `<table><thead><tr><th>Score</th><th>Count</th><th>%</th><th>Interpretation</th></tr></thead><tbody>${cg.distribution.map(a=>`<tr><td>${ap(a.score)}</td><td>${a.count}</td><td>${a.pct}%</td><td>${a.label}</td></tr>`).join('')}</tbody></table></div></div>`;
+
+  // Criteria coverage breakdown
+  const criteria = [
+    {name: 'Technical Context', count: cc.technical_context, desc: 'Description references file paths, APIs, functions, or code patterns'},
+    {name: 'Testable AC', count: cc.testable_ac, desc: 'Has structured acceptance criteria with multiple test conditions'},
+    {name: 'Bounded Scope', count: cc.bounded_scope, desc: 'Not an Epic/Initiative and estimated at ≤5 story points'},
+    {name: 'Component Mapped', count: cc.component_mapped, desc: 'Has at least one component or label linking it to a codebase area'},
+    {name: 'No Blockers', count: cc.no_blockers, desc: 'No inward blocking dependencies preventing work'},
+    {name: 'Estimated', count: cc.estimated, desc: 'Has story point estimate indicating scope is understood'},
+  ];
+  html += `<div class="card"><h3>Criteria Coverage</h3><p style="margin-bottom:12px;font-size:0.82rem;color:var(--text-muted)">How many items meet each individual criterion:</p><table><thead><tr><th>Criterion</th><th>Items Meeting</th><th>Coverage</th><th>Description</th></tr></thead><tbody>${criteria.map(c=>`<tr><td><strong>${c.name}</strong></td><td>${c.count} / ${total}</td><td><span style="color:${clr(c.count*100/total)};font-weight:700">${Math.round(c.count*100/total)}%</span></td><td style="font-size:0.78rem;color:var(--text-muted)">${c.desc}</td></tr>`).join('')}</tbody></table></div>`;
+
+  if (cg.top_ready.length) {
+    html += `<div class="card"><h3>${cg.top_ready.length} Items Scored 4-5 (Code Gen Ready)</h3><p style="margin-bottom:8px">These items have enough technical detail for AI to attempt code generation:</p><table><thead><tr><th>Key</th><th>Score</th><th>Type</th><th>Criteria Met</th><th>Summary</th></tr></thead><tbody>${cg.top_ready.map(i=>`<tr><td>${i.key}</td><td>${ap(i.score)}</td><td>${tp(i.type)}</td><td style="font-size:0.72rem">${i.criteria.map(c=>`<span class="pill pill-Story">${c}</span>`).join(' ')}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  if (cg.not_ready.length) {
+    html += `<div class="card"><h3>Items Scored 1-2 (Not Code Gen Ready)</h3><p style="margin-bottom:8px">These items lack the technical detail needed for AI code generation:</p><table><thead><tr><th>Key</th><th>Score</th><th>Type</th><th>Summary</th></tr></thead><tbody>${cg.not_ready.map(i=>`<tr><td>${i.key}</td><td>${ap(i.score)}</td><td>${tp(i.type)}</td><td>${esc(i.summary)}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  html += `<div class="card"><h3>How to Improve Code Generation Readiness</h3><ul><li>Add <strong>technical context</strong> to descriptions: mention specific files, APIs, endpoints, classes, or modules affected</li><li>Write <strong>testable acceptance criteria</strong> with Given/When/Then format and explicit expected behavior</li><li>Keep items <strong>small and focused</strong> -- single-responsibility changes of ≤5 story points</li><li>Tag items with <strong>components or labels</strong> that map to codebase areas</li><li>Resolve <strong>blocking dependencies</strong> before expecting AI to pick up work</li><li>Include <strong>example inputs/outputs</strong> or API request/response samples in the description</li></ul></div>`;
+
+  document.getElementById('codegen-content').innerHTML = html;
+
+  // Render chart after DOM insertion
+  const cgColors = ['#ef4444','#f97316','#eab308','#3b82f6','#22c55e'];
+  new Chart(document.getElementById('chart-codegen'), { type:'bar', data:{ labels:cg.distribution.map(a=>'Score '+a.score), datasets:[{data:cg.distribution.map(a=>a.count), backgroundColor:cgColors, borderRadius:6, borderSkipped:false}]}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{afterLabel:(ctx)=>cg.distribution[ctx.dataIndex].label}}}, scales:{y:{beginAtZero:true,grid:{color:'#2e3345'}},x:{grid:{display:false}}}} });
+}
+
+/* ─── 10. Coaching Insights ─── */
+function renderCoaching(d) {
+  const ci = d.coaching_insights;
+  let html = '';
+
+  html += `<div class="insight-card"><h4>Writing Better User Stories</h4><p>Many items in this backlog lack the structure needed for effective sprint planning. Adopt the following template for all new stories:</p><div class="code-block">${esc(ci.story_template)}</div></div>`;
+
+  html += `<div class="insight-card"><h4>Improving Acceptance Criteria</h4><p>${ci.ac_guidance}</p></div>`;
+
+  html += `<div class="insight-card"><h4>Breaking Down Large Items</h4><p>Use these splitting patterns for large stories:</p><ul>${ci.splitting_patterns.map(p=>`<li><strong>${p.pattern}:</strong> ${p.detail}</li>`).join('')}</ul></div>`;
+
+  html += `<div class="insight-card"><h4>Maintaining a Healthy Backlog</h4><ul>${ci.backlog_health.map(h=>`<li>${h}</li>`).join('')}</ul></div>`;
+
+  html += `<div class="insight-card"><h4>Preparing Items to be AI-Ready</h4><ul>${ci.ai_ready_tips.map(t=>`<li>${t}</li>`).join('')}</ul></div>`;
+
+  html += `<div class="card"><h3>Recommended Refinement Session Agenda</h3>${ci.refinement_agenda.map(a=>`<div class="agenda-item"><div class="agenda-time">${a.time}</div><div class="agenda-body"><div class="agenda-step">${a.step}</div><div class="agenda-desc">${a.detail}</div></div></div>`).join('')}</div>`;
+
+  document.getElementById('coaching-content').innerHTML = html;
+}
+
+/* ─── All Items Table ─── */
+function setupItemsTable(d) {
+  document.getElementById('items-badge').textContent = d.meta.total_items + ' total';
+  const types = [...new Set(d.all_items.map(i=>i.type))].sort();
+  const pris = [...new Set(d.all_items.map(i=>i.priority))].sort();
+  const stats = [...new Set(d.all_items.map(i=>i.status))].sort();
+  const tSel = document.getElementById('filter-type');
+  types.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=t; tSel.appendChild(o); });
+  const pSel = document.getElementById('filter-priority');
+  pris.forEach(p => { const o = document.createElement('option'); o.value=p; o.textContent=p; pSel.appendChild(o); });
+  const sSel = document.getElementById('filter-status');
+  stats.forEach(s => { const o = document.createElement('option'); o.value=s; o.textContent=s; sSel.appendChild(o); });
+  const aSel = document.getElementById('filter-ai');
+  [1,2,3,4,5].forEach(s => { const o = document.createElement('option'); o.value=s; o.textContent='AI Score '+s; aSel.appendChild(o); });
+  const tierSel = document.getElementById('filter-tier');
+  if (tierSel) {
+    const tierLabels = {active_sprint:'Active Sprint', planned_sprint:'Planned Sprint', backlog:'Backlog'};
+    const tierVals = [...new Set(d.all_items.map(i=>i.tier).filter(Boolean))];
+    tierVals.forEach(t => { const o = document.createElement('option'); o.value=t; o.textContent=tierLabels[t]||t; tierSel.appendChild(o); });
+  }
+
+  const apply = () => {
+    const search = document.getElementById('filter-search').value.toLowerCase();
+    const type = tSel.value, pri = pSel.value, status = sSel.value, ai = aSel.value;
+    const tier = tierSel ? tierSel.value : '';
+    let filtered = d.all_items.filter(i => {
+      if (search && !i.key.toLowerCase().includes(search) && !i.summary.toLowerCase().includes(search)) return false;
+      if (type && i.type !== type) return false;
+      if (pri && i.priority !== pri) return false;
+      if (status && i.status !== status) return false;
+      if (ai && i.ai_readiness !== parseInt(ai)) return false;
+      if (tier && i.tier !== tier) return false;
+      return true;
+    });
+    if (sortState.col) {
+      filtered.sort((a,b) => {
+        let va=a[sortState.col], vb=b[sortState.col];
+        if (va==null) va = sortState.dir==='asc' ? Infinity : -Infinity;
+        if (vb==null) vb = sortState.dir==='asc' ? Infinity : -Infinity;
+        if (typeof va==='string') { va=va.toLowerCase(); vb=(vb||'').toLowerCase(); }
+        return sortState.dir==='asc' ? (va<vb?-1:va>vb?1:0) : (va>vb?-1:va<vb?1:0);
+      });
+    }
+    document.getElementById('tbody-all').innerHTML = filtered.map(i => `<tr>
+      <td>${i.key}</td><td>${i.tier ? tierPill(i.tier) : '-'}</td><td>${tp(i.type)}</td><td>${pp(i.priority)}</td><td>${i.status}</td>
+      <td title="${esc(i.summary)}">${esc(i.summary.substring(0,80))}</td>
+      <td>${i.story_points!==null?i.story_points:'-'}</td><td>${ap(i.ai_readiness)}</td><td>${ap(i.codegen_readiness||1)}</td>
+      <td>${i.concern_count>0?`<span style="color:${i.concern_count>=4?'var(--red)':i.concern_count>=2?'var(--orange)':'var(--text-muted)'}">${i.concern_count}</span>`:'0'}</td>
+      <td>${i.days_since_update!==null?i.days_since_update:'-'}</td>
+      <td>${i.assignee==='Unassigned'?'<span style="color:var(--text-muted)">-</span>':esc(i.assignee)}</td>
+    </tr>`).join('');
+    document.getElementById('filter-count').textContent = filtered.length + ' items shown';
+  };
+  document.getElementById('filter-search').addEventListener('input', apply);
+  [tSel,pSel,sSel,aSel,tierSel].filter(Boolean).forEach(s => s.addEventListener('change', apply));
+  document.querySelectorAll('#table-all th[data-col]').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.col;
+      if (sortState.col===col) sortState.dir = sortState.dir==='asc'?'desc':'asc';
+      else { sortState.col=col; sortState.dir='asc'; }
+      document.querySelectorAll('#table-all th').forEach(h=>h.classList.remove('sorted-asc','sorted-desc'));
+      th.classList.add('sorted-'+sortState.dir);
+      apply();
+    });
+  });
+  apply();
+}
+
+/* ─── Navigation ─── */
+function setupNav() {
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById(btn.dataset.section).classList.add('active');
+      window.scrollTo({top:0,behavior:'smooth'});
+    });
+  });
+}
+
+loadData();
+</script>
+</body>
+</html>
