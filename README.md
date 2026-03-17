@@ -23,21 +23,6 @@ That's it. The tool will:
 3. Categorize items into tiers (active sprint / planned sprint / backlog)
 4. Generate three output files auto-named from your board:
 
-```
-Using board ID: 1131
-Board name: Training Kubeflow
-Searching Jira...
-Loaded 100 items from Jira API
-Discovering sprints for tier analysis...
-  Active: Sprint 27 (17 items)
-  Planned: Sprint 28 (11 items)
-  Backlog: 72 items
-Auto-naming outputs: training_kubeflow_*
-Report written to: training_kubeflow_report.md
-JSON written to: training_kubeflow_data.json
-Dashboard written to: training_kubeflow_dashboard.html
-```
-
 | Output | What's Inside |
 |--------|---------------|
 | **HTML Dashboard** | Interactive 12-section dashboard with charts, filters, and drill-downs |
